@@ -1,7 +1,5 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
-
 interface MyPluginSettings {
 	mySetting: string;
 }
@@ -12,6 +10,7 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
+	timer: number;
 
 	async onload() {
 		await this.loadSettings();
@@ -21,14 +20,22 @@ export default class MyPlugin extends Plugin {
 			// Called when the user clicks the icon.
 			new Notice('This is a notice!');
 		});
-		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText('Status Bar Text');
 
-		// This adds a simple command that can be triggered anywhere
+
+		this.addCommand({
+			id: 'sample-editor-command',
+			name: 'Sample editor command',
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				this.processEditorContent(editor);
+				new Notice('This is a notice!');
+			}
+		});
+
+
 		this.addCommand({
 			id: 'open-sample-modal-simple',
 			name: 'Open sample modal (simple)',
@@ -36,51 +43,107 @@ export default class MyPlugin extends Plugin {
 				new SampleModal(this.app).open();
 			}
 		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
+
+		// this.addCommand({
+		// 	id: 'sample-editor-command',
+		// 	name: 'Sample editor command',
+		// 	editorCallback: (editor: Editor, view: MarkdownView) => {
+		// 		console.log(editor.getSelection());
+		// 		editor.replaceSelection('Sample Editor Command');
+		// 	}
+		// });
+
 		this.addCommand({
 			id: 'open-sample-modal-complex',
 			name: 'Open sample modal (complex)',
 			checkCallback: (checking: boolean) => {
-				// Conditions to check
 				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
 					if (!checking) {
 						new SampleModal(this.app).open();
 					}
-
-					// This command will only show up in Command Palette when the check function returns true
 					return true;
 				}
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
+		this.addCommand({
+			id: 'start-20-minute-timer',
+			name: 'Start 20 Minute Timer',
+			callback: () => {
+				this.startTimer();
+			}
+		});
+
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
 			console.log('click', evt);
 		});
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
 	onunload() {
-
+		if (this.timer) {
+			clearTimeout(this.timer);
+		}
 	}
+
+	startTimer() {
+		new Notice('Timer started for 20 minutes.');
+		this.timer = window.setTimeout(() => {
+			new TimeUpModal(this.app).open();
+		}, 20);
+	}
+
+
+processEditorContent(editor: Editor) {
+    // 获取整个文档内容
+    const content = editor.getValue();
+
+    // 使用正则表达式查找所有被 :: 标记的数据
+    const regex = /::((?:.|\n)*?)::/g;
+    let match;
+    const matches = [];
+
+    // 查找所有匹配的部分
+    while ((match = regex.exec(content)) !== null) {
+        matches.push(match);
+    }
+
+    // 如果找到任何匹配的部分
+    if (matches.length > 0) {
+        let updatedContent = content;
+        for (const match of matches) {
+            const fullMatch = match[0];
+            const data = match[1];
+
+            // 转换为字符数组以便进行替换操作
+            const dataArray = data.split('');
+            const length = dataArray.length;
+            
+            // 随机删除字符，确保至少一个字符被删除
+            const numToDelete = Math.floor(Math.random() * length) + 1;
+            for (let i = 0; i < numToDelete; i++) {
+                const indexToDelete = Math.floor(Math.random() * length);
+                dataArray[indexToDelete] = ' ';
+            }
+
+            // 处理后的数据
+            const updatedData = dataArray.join('');
+
+            // 用处理后的数据替换原始内容中的匹配部分
+            updatedContent = updatedContent.replace(fullMatch, `::${updatedData}::`);
+        }
+
+        // 更新编辑器内容
+        editor.setValue(updatedContent);
+    } else {
+        new Notice('No ::marked:: content found.');
+    }
+}
+
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -130,5 +193,21 @@ class SampleSettingTab extends PluginSettingTab {
 					this.plugin.settings.mySetting = value;
 					await this.plugin.saveSettings();
 				}));
+	}
+}
+
+class TimeUpModal extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const {contentEl} = this;
+		contentEl.setText('Time up!');
+	}
+
+	onClose() {
+		const {contentEl} = this;
+		contentEl.empty();
 	}
 }

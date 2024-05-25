@@ -98,51 +98,52 @@ export default class MyPlugin extends Plugin {
 	}
 
 
-processEditorContent(editor: Editor) {
-    // 获取整个文档内容
-    const content = editor.getValue();
-
-    // 使用正则表达式查找所有被 :: 标记的数据
-    const regex = /::((?:.|\n)*?)::/g;
-    let match;
-    const matches = [];
-
-    // 查找所有匹配的部分
-    while ((match = regex.exec(content)) !== null) {
-        matches.push(match);
-    }
-
-    // 如果找到任何匹配的部分
-    if (matches.length > 0) {
-        let updatedContent = content;
-        for (const match of matches) {
-            const fullMatch = match[0];
-            const data = match[1];
-
-            // 转换为字符数组以便进行替换操作
-            const dataArray = data.split('');
-            const length = dataArray.length;
-            
-            // 随机删除字符，确保至少一个字符被删除
-            const numToDelete = Math.floor(Math.random() * length) + 1;
-            for (let i = 0; i < numToDelete; i++) {
-                const indexToDelete = Math.floor(Math.random() * length);
-                dataArray[indexToDelete] = ' ';
-            }
-
-            // 处理后的数据
-            const updatedData = dataArray.join('');
-
-            // 用处理后的数据替换原始内容中的匹配部分
-            updatedContent = updatedContent.replace(fullMatch, `::${updatedData}::`);
-        }
-
-        // 更新编辑器内容
-        editor.setValue(updatedContent);
-    } else {
-        new Notice('No ::marked:: content found.');
-    }
-}
+	processEditorContent(editor: Editor) {
+		// 获取整个文档内容
+		const content = editor.getValue();
+	
+		// 使用正则表达式查找所有被 :: 标记的数据
+		const regex = /::((?:.|\n)*?)::/g;
+		let match;
+		const matches = [];
+	
+		// 查找所有匹配的部分
+		while ((match = regex.exec(content)) !== null) {
+			matches.push(match);
+		}
+	
+		// 如果找到任何匹配的部分
+		if (matches.length > 0) {
+			let updatedContent = content;
+			for (const match of matches) {
+				const fullMatch = match[0];
+				const data = match[1];
+	
+				// 转换为字符数组以便进行替换操作
+				const dataArray = data.split('');
+				const length = dataArray.length;
+				
+				// 随机删除字符，确保至少一个字符被删除
+				const numToDelete = Math.floor(Math.random() * length) + 1;
+				for (let i = 0; i < numToDelete; i++) {
+					const indexToDelete = Math.floor(Math.random() * length);
+					dataArray[indexToDelete] = ' ';
+				}
+	
+				// 处理后的数据
+				const updatedData = dataArray.join('');
+	
+				// 用处理后的数据替换原始内容中的匹配部分
+				updatedContent = updatedContent.replace(fullMatch, `::${updatedData}::`);
+			}
+	
+			// 更新编辑器内容
+			editor.setValue(updatedContent);
+		} else {
+			new Notice('No ::marked:: content found.');
+		}
+	}
+	
 
 
 	async loadSettings() {

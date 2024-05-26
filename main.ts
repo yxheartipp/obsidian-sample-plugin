@@ -1,4 +1,5 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+// src/main.ts
+import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 
 interface MyPluginSettings {
 	mySetting: string;
@@ -8,143 +9,51 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: 'default'
 }
 
-export default class MyPlugin extends Plugin {
+export default class LeetCodePracticePlugin extends Plugin {
 	settings: MyPluginSettings;
-	timer: number;
+	startTime: number | null = null;
+	timer: number | null = null;
+	practiceFile: TFile | null = null;
+	countdownEl: HTMLElement | null = null;
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
-
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-
 		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				this.processEditorContent(editor);
-				new Notice('This is a notice!');
-			}
-		});
-
-
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
+			id: 'open-practice',
+			name: 'Open Practice',
 			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-
-		// this.addCommand({
-		// 	id: 'sample-editor-command',
-		// 	name: 'Sample editor command',
-		// 	editorCallback: (editor: Editor, view: MarkdownView) => {
-		// 		console.log(editor.getSelection());
-		// 		editor.replaceSelection('Sample Editor Command');
-		// 	}
-		// });
-
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-					return true;
-				}
+				this.createPracticeNote();
 			}
 		});
 
 		this.addCommand({
-			id: 'start-20-minute-timer',
-			name: 'Start 20 Minute Timer',
+			id: 'start-practice',
+			name: 'Start Practice',
 			callback: () => {
-				this.startTimer();
+				this.openTimeInputModal();
 			}
 		});
 
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
+		this.addCommand({
+			id: 'end-practice',
+			name: 'End Practice',
+			callback: () => {
+				this.endPracticeTimer();
+			}
 		});
 
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		this.addSettingTab(new LeetCodePracticeSettingTab(this.app, this));
 	}
 
 	onunload() {
 		if (this.timer) {
 			clearTimeout(this.timer);
 		}
-	}
-
-	startTimer() {
-		new Notice('Timer started for 20 minutes.');
-		this.timer = window.setTimeout(() => {
-			new TimeUpModal(this.app).open();
-		}, 20);
-	}
-
-
-	processEditorContent(editor: Editor) {
-		// 获取整个文档内容
-		const content = editor.getValue();
-	
-		// 使用正则表达式查找所有被 :: 标记的数据
-		const regex = /::((?:.|\n)*?)::/g;
-		let match;
-		const matches = [];
-	
-		// 查找所有匹配的部分
-		while ((match = regex.exec(content)) !== null) {
-			matches.push(match);
-		}
-	
-		// 如果找到任何匹配的部分
-		if (matches.length > 0) {
-			let updatedContent = content;
-			for (const match of matches) {
-				const fullMatch = match[0];
-				const data = match[1];
-	
-				// 转换为字符数组以便进行替换操作
-				const dataArray = data.split('');
-				const length = dataArray.length;
-				
-				// 随机删除字符，确保至少一个字符被删除
-				const numToDelete = Math.floor(Math.random() * length) + 1;
-				for (let i = 0; i < numToDelete; i++) {
-					const indexToDelete = Math.floor(Math.random() * length);
-					dataArray[indexToDelete] = ' ';
-				}
-	
-				// 处理后的数据
-				const updatedData = dataArray.join('');
-	
-				// 用处理后的数据替换原始内容中的匹配部分
-				updatedContent = updatedContent.replace(fullMatch, `::${updatedData}::`);
-			}
-	
-			// 更新编辑器内容
-			editor.setValue(updatedContent);
-		} else {
-			new Notice('No ::marked:: content found.');
+		if (this.countdownEl) {
+			this.countdownEl.remove();
 		}
 	}
-	
-
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -153,62 +62,318 @@ export default class MyPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+
+	async createPracticeNote() {
+		const folderPath = "LeetCode Practices";
+		const date = new Date().toISOString().split('T')[0];
+		const time = new Date().toLocaleTimeString('en-GB').replace(/:/g, '-');
+		const fileName = `${folderPath}/LeetCode Practice - ${date} ${time}.md`;
+		const fileContent = `# LeetCode Practice\n\n## 目标\n\n## 时间\n\n## 结果\n\n## 反馈\n\n`;
+
+		try {
+			await this.app.vault.createFolder(folderPath).catch((error) => {
+				if (!error.message.contains("Folder already exists")) {
+					throw error;
+				}
+			});
+
+			const file = await this.app.vault.create(fileName, fileContent);
+			const leaf = this.app.workspace.getLeaf();
+			await leaf.openFile(file);
+			new Notice('Practice note created successfully.');
+		} catch (error) {
+			new Notice('Error creating practice note: ' + error.message);
+		}
+	}
+
+	openTimeInputModal() {
+		new TimeInputModal(this.app, (inputTime: number, goal: string) => {
+			this.startPracticeTimer(inputTime, goal);
+		}).open();
+	}
+
+	startPracticeTimer(inputTime: number, goal: string) {
+		this.startTime = Date.now();
+		const practiceTimeInMinutes = inputTime;
+		const practiceTimeInMilliseconds = practiceTimeInMinutes * 60 * 1000;
+
+		// Generate the practice note
+		this.createPracticeNoteWithGoal(goal);
+
+		new Notice(`Practice started for ${practiceTimeInMinutes} minutes.`);
+
+		this.timer = window.setTimeout(() => {
+			this.endPracticeTimer();
+		}, practiceTimeInMilliseconds);
+
+		this.startCountdown(practiceTimeInMilliseconds);
+	}
+
+	async createPracticeNoteWithGoal(goal: string) {
+		const folderPath = "LeetCode Practices";
+		const date = new Date().toISOString().split('T')[0];
+		const time = new Date().toLocaleTimeString('en-GB').replace(/:/g, '-');
+		const fileName = `${folderPath}/LeetCode Practice - ${date} ${time}.md`;
+		const fileContent = `# LeetCode Practice\n\n## 目标\n\n${goal}\n\n## 时间\n\n## 结果\n\n## 反馈\n\n`;
+
+		try {
+			await this.app.vault.createFolder(folderPath).catch((error) => {
+				if (!error.message.contains("Folder already exists")) {
+					throw error;
+				}
+			});
+
+			const file = await this.app.vault.create(fileName, fileContent);
+			this.practiceFile = file;  // Save the file for future use
+			const leaf = this.app.workspace.getLeaf();
+			await leaf.openFile(file);
+		} catch (error) {
+			new Notice('Error creating practice note: ' + error.message);
+		}
+	}
+
+	async endPracticeTimer() {
+		if (this.startTime === null) {
+			new Notice('No active practice session.');
+			return;
+		}
+
+		const endTime = Date.now();
+		const elapsedTime = Math.floor((endTime - this.startTime) / 1000); // in seconds
+		const hours = Math.floor(elapsedTime / 3600);
+		const minutes = Math.floor((elapsedTime % 3600) / 60);
+		const seconds = elapsedTime % 60;
+
+		const formattedTime = `${hours}小时${minutes}分钟${seconds}秒`;
+
+		if (!this.practiceFile) {
+			new Notice('No practice file found.');
+			return;
+		}
+
+		const content = await this.app.vault.read(this.practiceFile);
+		const updatedContent = content.replace("## 时间", `## 时间\n\n实际练习时间：${formattedTime}`);
+		await this.app.vault.modify(this.practiceFile, updatedContent);
+
+		new Notice(`Practice ended. Time spent: ${formattedTime}.`);
+
+		this.logPracticeFeedback();
+		this.startTime = null;
+		if (this.timer) {
+			clearTimeout(this.timer);
+			this.timer = null;
+		}
+		if (this.countdownEl) {
+			this.countdownEl.remove();
+			this.countdownEl = null;
+		}
+	}
+
+	logPracticeFeedback() {
+		new FeedbackModal(this.app, async (feedback: string) => {
+			if (!this.practiceFile) {
+				new Notice('No practice file found.');
+				return;
+			}
+
+			const content = await this.app.vault.read(this.practiceFile);
+			const updatedContent = content.replace("## 反馈", `## 反馈\n\n${feedback}`);
+			await this.app.vault.modify(this.practiceFile, updatedContent);
+		}).open();
+	}
+
+	startCountdown(duration: number) {
+		if (this.countdownEl) {
+			this.countdownEl.remove();
+		}
+		this.countdownEl = createCountdownElement();
+		document.body.appendChild(this.countdownEl);
+
+		const updateCountdown = () => {
+			const now = Date.now();
+			const remainingTime = Math.max(0, duration - (now - this.startTime));
+			const hours = Math.floor(remainingTime / (1000 * 60 * 60));
+			const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
+			const seconds = Math.floor((remainingTime % (1000 * 60)) / 1000);
+
+			this.countdownEl.setText(`剩余时间: ${hours}小时${minutes}分钟${seconds}秒`);
+
+			if (remainingTime <= 0) {
+				clearInterval(intervalId);
+			}
+		};
+
+		updateCountdown();
+		const intervalId = setInterval(updateCountdown, 1000);
+	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
+function createCountdownElement(): HTMLElement {
+	const el = document.createElement('div');
+	el.style.position = 'fixed';
+	el.style.top = '10px';
+	el.style.right = '10px';
+	el.style.backgroundColor = '#333';
+	el.style.color = '#fff';
+	el.style.padding = '5px 10px';
+	el.style.borderRadius = '5px';
+	el.style.zIndex = '1000';
+	return el;
+}
+
+class TimeInputModal extends Modal {
+	result: string;
+	goal: string;
+	onSubmit: (time: number, goal: string) => void;
+
+	constructor(app: App, onSubmit: (time: number, goal: string) => void) {
 		super(app);
+		this.onSubmit = onSubmit;
 	}
 
 	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
+		const { contentEl } = this;
+
+		contentEl.createEl("h1", { text: "输入练习时间 (分钟)" });
+
+		const timeInput = new Setting(contentEl)
+			.setName("时间")
+			.addText((text) => {
+				text.inputEl.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						goalInput.controlEl.children[1].focus();
+					}
+				});
+				text.onChange((value) => {
+					this.result = value;
+				});
+			});
+
+		const goalInput = new Setting(contentEl)
+			.setName("目标")
+			.addText((text) => {
+				text.inputEl.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						this.submit();
+					}
+				});
+				text.onChange((value) => {
+					this.goal = value;
+				});
+			});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText("提交")
+					.setCta()
+					.onClick(() => {
+						this.submit();
+					})
+			);
+	}
+
+	submit() {
+		if (!this.result || !this.goal) {
+			new Notice('时间和目标不能为空。');
+			return;
+		}
+
+		this.close();
+		const inputTime = parseInt(this.result);
+		if (!isNaN(inputTime) && inputTime > 0) {
+			this.onSubmit(inputTime, this.goal);
+		} else {
+			new Notice('Invalid time entered.');
+		}
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		let { contentEl } = this;
 		contentEl.empty();
 	}
 }
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+class FeedbackModal extends Modal {
+	result: string;
+	onSubmit: (result: string) => void;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, onSubmit: (result: string) => void) {
+		super(app);
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+
+		contentEl.createEl("h1", { text: "输入练习反馈" });
+
+		new Setting(contentEl)
+			.setName("反馈")
+			.addTextArea((text) => {
+				text.inputEl.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						this.submit();
+					}
+				});
+				text.onChange((value) => {
+					this.result = value;
+				});
+			});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText("提交")
+					.setCta()
+					.onClick(() => {
+						this.submit();
+					})
+			);
+	}
+
+	submit() {
+		if (!this.result) {
+			new Notice('反馈不能为空。');
+			return;
+		}
+		this.close();
+		this.onSubmit(this.result);
+	}
+
+	onClose() {
+		let { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class LeetCodePracticeSettingTab extends PluginSettingTab {
+	plugin: LeetCodePracticePlugin;
+
+	constructor(app: App, plugin: LeetCodePracticePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
+		containerEl.createEl('h2', { text: 'Settings for LeetCode Practice Plugin' });
+
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('My Setting')
+			.setDesc('A description of my setting.')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
+				.setPlaceholder('Enter your setting')
 				.setValue(this.plugin.settings.mySetting)
 				.onChange(async (value) => {
 					this.plugin.settings.mySetting = value;
 					await this.plugin.saveSettings();
 				}));
-	}
-}
-
-class TimeUpModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Time up!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
 	}
 }
